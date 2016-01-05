@@ -1,6 +1,6 @@
 === wp-resized2cache ===
 Contributors: cadeyrn
-Donate link:
+Donate link: https://paypal.me/petermolnar/3
 Tags: image, cache, image quality,
 Requires at least: 3.0
 Tested up to: 4.4

@@ -33,6 +33,8 @@ class WP_RESIZED2CACHE {
 	const cachedir = WP_CONTENT_DIR . DIRECTORY_SEPARATOR . 'cache';
 
 	public function __construct () {
+		register_activation_hook( __FILE__ , array( &$this, 'plugin_activate' ) );
+
 		if (!is_dir(static::cachedir)) {
 			if (!mkdir(static::cachedir)) {
 				static::debug('failed to create ' . static::cachedir);
@@ -52,6 +54,16 @@ class WP_RESIZED2CACHE {
 		add_filter( 'image_make_intermediate_size',array ( &$this, 'sharpen' ),10);
 
 	}
+
+	/**
+	 * activate hook
+	 */
+	public static function plugin_activate() {
+		if ( version_compare( phpversion(), 5.3, '<' ) ) {
+			die( 'The minimum PHP version required for this plugin is 5.3' );
+		}
+	}
+
 
 	/**
 	 * called on attachment deletion and takes care of removing the moved files
@@ -110,8 +122,10 @@ class WP_RESIZED2CACHE {
 
 		$size = @getimagesize($resized);
 
-		if ( !$size )
+		if ( !$size ) {
+			static::debug("Unable to get size");
 			return $resized;
+		}
 
 		//$cachedir = WP_CONTENT_DIR . DIRECTORY_SEPARATOR . 'cache';
 

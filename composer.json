@@ -2,7 +2,7 @@
     "name": "petermolnar/wp-resized2cache",
     "description": "WordPress plugin to auto-move and enhance resized jpgs to cache folder",
     "require": {
-		"php": ">=5.3.0",
+        "php": ">=5.3.0",
         "ext-imagick": "^3.1"
     },
     "license": "GPLv3",
@@ -10,7 +10,7 @@
         {
             "name": "Peter Molnar",
             "email": "hello@petermolnar.eu",
-			"homepage": "https://petermolnar.eu"
+            "homepage": "https://petermolnar.eu"
         }
     ]
 }
