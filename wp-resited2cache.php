@@ -3,7 +3,7 @@
 Plugin Name: wp-resized2cache
 Plugin URI: https://github.com/petermolnar/wp-resized2cache
 Description: Sharpen, enchance and move resized images to cache folder
-Version: 0.1
+Version: 0.2
 Author: Peter Molnar <hello@petermolnar.eu>
 Author URI: http://petermolnar.eu/
 License: GPLv3
@@ -140,6 +140,7 @@ class WP_RESIZED2CACHE {
 				$imagick->setImageFormat("jpg");
 				$imagick->setImageCompression(Imagick::COMPRESSION_JPEG);
 				$imagick->setImageCompressionQuality(static::jpeg_quality());
+				$imagick->setInterlaceScheme(Imagick::INTERLACE_PLANE);
 				$imagick->writeImage($cached);
 				$imagick->destroy();
 			}
@@ -173,23 +174,54 @@ class WP_RESIZED2CACHE {
 	 *
 	 * @param string $message
 	 * @param int $level
+	 *
+	 * @output log to syslog | wp_die on high level
+	 * @return false on not taking action, true on log sent
 	 */
-	static function debug( $message, $level = LOG_NOTICE ) {
+	public static function debug( $message, $level = LOG_NOTICE ) {
+		if ( empty( $message ) )
+			return false;
+
 		if ( @is_array( $message ) || @is_object ( $message ) )
 			$message = json_encode($message);
 
+		$levels = array (
+			LOG_EMERG => 0, // system is unusable
+			LOG_ALERT => 1, // Alert 	action must be taken immediately
+			LOG_CRIT => 2, // Critical 	critical conditions
+			LOG_ERR => 3, // Error 	error conditions
+			LOG_WARNING => 4, // Warning 	warning conditions
+			LOG_NOTICE => 5, // Notice 	normal but significant condition
+			LOG_INFO => 6, // Informational 	informational messages
+			LOG_DEBUG => 7, // Debug 	debug-level messages
+		);
 
-		switch ( $level ) {
-			case LOG_ERR :
-				wp_die( '<h1>Error:</h1>' . '<p>' . $message . '</p>' );
-				exit;
-			default:
-				if ( !defined( 'WP_DEBUG' ) || WP_DEBUG != true )
-					return;
-				break;
+		// number for number based comparison
+		// should work with the defines only, this is just a make-it-sure step
+		$level_ = $levels [ $level ];
+
+		// in case WordPress debug log has a minimum level
+		if ( defined ( 'WP_DEBUG_LEVEL' ) ) {
+			$wp_level = $levels [ WP_DEBUG_LEVEL ];
+			if ( $level_ < $wp_level ) {
+				return false;
+			}
 		}
 
-		error_log(  __CLASS__ . " => " . $message );
+		// ERR, CRIT, ALERT and EMERG
+		if ( 3 >= $level_ ) {
+			wp_die( '<h1>Error:</h1>' . '<p>' . $message . '</p>' );
+			exit;
+		}
+
+		$trace = debug_backtrace();
+		$caller = $trace[1];
+		$parent = $caller['function'];
+
+		if (isset($caller['class']))
+			$parent = $caller['class'] . '::' . $parent;
+
+		return error_log( "{$parent}: {$message}" );
 	}
 
 	/**
