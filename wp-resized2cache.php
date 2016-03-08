@@ -3,7 +3,7 @@
 Plugin Name: wp-resized2cache
 Plugin URI: https://github.com/petermolnar/wp-resized2cache
 Description: Sharpen, enchance and move resized images to cache folder
-Version: 0.2
+Version: 0.2.1
 Author: Peter Molnar <hello@petermolnar.eu>
 Author URI: http://petermolnar.eu/
 License: GPLv3
@@ -37,7 +37,7 @@ class WP_RESIZED2CACHE {
 
 		if (!is_dir(static::cachedir)) {
 			if (!mkdir(static::cachedir)) {
-				static::debug('failed to create ' . static::cachedir);
+				static::debug('failed to create ' . static::cachedir, 4);
 			}
 		}
 
@@ -70,7 +70,7 @@ class WP_RESIZED2CACHE {
 	 *
 	 */
 	public static function delete_from_cache ( $aid = null ) {
-		static::debug( "DELETE is called and aid is: " . $aid );
+		static::debug( "DELETE is called and aid is: " . $aid, 5 );
 		if ($aid === null)
 			return false;
 
@@ -83,7 +83,7 @@ class WP_RESIZED2CACHE {
 				foreach ( $meta['sizes'] as $size => $data ) {
 					$file = static::cachedir . DIRECTORY_SEPARATOR . $data['file'];
 					if ( isset($data['file']) && is_file($file)) {
-						static::debug( " removing " . $file );
+						static::debug( " removing " . $file, 5 );
 						unlink ($file);
 					}
 				}
@@ -107,7 +107,7 @@ class WP_RESIZED2CACHE {
 	static public function sharpen( $resized ) {
 
 		if (!class_exists('Imagick')) {
-			static::debug('Please install Imagick extension; otherwise this plugin will not work as well as it should.');
+			static::debug('Please install Imagick extension; otherwise this plugin will not work as well as it should.', 4);
 		}
 
 		/*
@@ -123,7 +123,7 @@ class WP_RESIZED2CACHE {
 		$size = @getimagesize($resized);
 
 		if ( !$size ) {
-			static::debug("Unable to get size");
+			static::debug("Unable to get size for: {$resized}", 4);
 			return $resized;
 		}
 
@@ -133,7 +133,7 @@ class WP_RESIZED2CACHE {
 		$cached = static::cachedir . DIRECTORY_SEPARATOR . $fname;
 
 		if ( $size[2] == IMAGETYPE_JPEG && class_exists('Imagick')) {
-			static::debug( "adaptive sharpen " . $resized );
+			static::debug( "adaptive sharpen " . $resized, 6 );
 			try {
 				$imagick = new Imagick($resized);
 				$imagick->unsharpMaskImage(0,0.5,1,0);
@@ -145,22 +145,22 @@ class WP_RESIZED2CACHE {
 				$imagick->destroy();
 			}
 			catch (Exception $e) {
-				static::debug( 'something went wrong with imagemagick: ',  $e->getMessage() );
+				static::debug( 'something went wrong with imagemagick: ',  $e->getMessage(), 4 );
 				return $resized;
 			}
 
-			static::debug( "removing " . $resized );
+			static::debug( "removing " . $resized, 5 );
 			unlink ($resized);
 
 		}
 		else {
-			static::debug( "moving " . $cached );
+			static::debug( "moving " . $cached, 5 );
 			if (copy( $resized, $cached)) {
-				static::debug(  "removing " . $resized );
+				static::debug(  "removing " . $resized, 5 );
 				unlink( $resized );
 			}
 			else {
-				static::debug( "\tmove failed, passing on this" );
+				static::debug( "\tmove failed, passing on this", 4 );
 			}
 		}
 
@@ -203,7 +203,7 @@ class WP_RESIZED2CACHE {
 		// in case WordPress debug log has a minimum level
 		if ( defined ( 'WP_DEBUG_LEVEL' ) ) {
 			$wp_level = $levels [ WP_DEBUG_LEVEL ];
-			if ( $level_ < $wp_level ) {
+			if ( $level_ > $wp_level ) {
 				return false;
 			}
 		}
