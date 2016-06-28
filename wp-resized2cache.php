@@ -141,6 +141,7 @@ class WP_RESIZED2CACHE {
 				$imagick->setImageCompression(Imagick::COMPRESSION_JPEG);
 				$imagick->setImageCompressionQuality(static::jpeg_quality());
 				$imagick->setInterlaceScheme(Imagick::INTERLACE_PLANE);
+				$imagick = apply_filters( "wp_resized2cache_imagick", $imagick, $resized );
 				$imagick->writeImage($cached);
 				$imagick->destroy();
 			}
