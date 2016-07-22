@@ -4,7 +4,7 @@ Donate link: https://paypal.me/petermolnar/3
 Tags: image, cache, image quality,
 Requires at least: 3.0
 Tested up to: 4.4.2
-Stable tag: 0.3
+Stable tag: 0.3.1
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 

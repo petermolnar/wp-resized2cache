@@ -3,7 +3,7 @@
 Plugin Name: wp-resized2cache
 Plugin URI: https://github.com/petermolnar/wp-resized2cache
 Description: Sharpen, enchance and move resized images to cache folder
-Version: 0.3
+Version: 0.3.1
 Author: Peter Molnar <hello@petermolnar.eu>
 Author URI: http://petermolnar.eu/
 License: GPLv3
@@ -100,12 +100,11 @@ function jpeg_quality () {
 function sharpen( $resized ) {
 
 	if ( ! class_exists( '\Imagick' ) ) {
-		debug('Please install Imagick extension; otherwise this plugin will not work as well as it should.', 4);
+		debug( 'Please install Imagick extension'
+		. 'otherwise this plugin will not work as well as it should.', 4);
 	}
 
 	/*
-	preg_match ( '/(.*)-([0-9]+)x([0-9]+)\.([0-9A-Za-z]{2,4})/', $resized, $details );
-
 	 * 0 => original var
 	 * 1 => full original file path without extension
 	 * 2 => resized size w
@@ -134,7 +133,11 @@ function sharpen( $resized ) {
 			$imagick->setImageCompression( \Imagick::COMPRESSION_JPEG );
 			$imagick->setImageCompressionQuality( jpeg_quality() );
 			$imagick->setInterlaceScheme( \Imagick::INTERLACE_PLANE );
-			$imagick = \apply_filters( "wp_resized2cache_imagick", $imagick, $resized );
+			$imagick = \apply_filters(
+				"wp_resized2cache_imagick",
+				$imagick,
+				$resized
+			);
 			$imagick->writeImage($cached);
 			$imagick->destroy();
 		}
@@ -219,10 +222,13 @@ function debug( $message, $level = LOG_NOTICE ) {
 }
 
 /**
- *
+ * test if an object is actually a post
  */
 function is_post ( &$post ) {
-	if ( !empty($post) && is_object($post) && isset($post->ID) && !empty($post->ID) )
+	if ( ! empty( $post ) &&
+			 is_object( $post ) &&
+			 isset( $post->ID ) &&
+			 ! empty( $post->ID ) )
 		return true;
 
 	return false;
