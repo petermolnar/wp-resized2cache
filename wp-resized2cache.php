@@ -3,13 +3,13 @@
 Plugin Name: wp-resized2cache
 Plugin URI: https://github.com/petermolnar/wp-resized2cache
 Description: Sharpen, enchance and move resized images to cache folder
-Version: 0.3.1
+Version: 0.5
 Author: Peter Molnar <hello@petermolnar.eu>
 Author URI: http://petermolnar.eu/
 License: GPLv3
 */
 
-/*  Copyright 2015 Peter Molnar ( hello@petermolnar.eu )
+/*  Copyright 2016 Peter Molnar ( hello@petermolnar.eu )
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License, version 3, as
@@ -27,15 +27,20 @@ License: GPLv3
 
 namespace WP_RESIZED2CACHE;
 
-define ( 'cachedir', \WP_CONTENT_DIR . DIRECTORY_SEPARATOR . 'cache' );
+define ( 'WP_RESIZED2CACHE\CACHENAME', 'cache' );
+
+define ( 'WP_RESIZED2CACHE\CACHE', \WP_CONTENT_DIR . DIRECTORY_SEPARATOR
+	. CACHENAME . DIRECTORY_SEPARATOR );
+
 \register_activation_hook( __FILE__ , 'WP_RESIZED2CACHE\plugin_activate' );
+
 \add_action( 'init', 'WP_RESIZED2CACHE\init' );
 \add_action( 'delete_attachment', 'WP_RESIZED2CACHE\delete_from_cache' );
 
 function init () {
-	if ( ! is_dir( cachedir ) ) {
-		if ( ! mkdir( cachedir ) ) {
-			debug('failed to create ' . cachedir, 4);
+	if ( ! is_dir( CACHE ) ) {
+		if ( ! mkdir( CACHE ) ) {
+			debug('failed to create ' . CACHE, 4);
 		}
 	}
 
@@ -44,7 +49,11 @@ function init () {
 	\add_filter( 'wp_editor_set_quality', 'WP_RESIZED2CACHE\jpeg_quality' );
 
 	// sharpen resized images on upload
-	\add_filter( 'image_make_intermediate_size', 'WP_RESIZED2CACHE\sharpen', 10 );
+	\add_filter( 'image_make_intermediate_size',
+		'WP_RESIZED2CACHE\fix_location', 10 );
+
+	add_filter( 'wp_get_attachment_image_src',
+		'WP_RESIZED2CACHE\wp_get_attachment_image_src', 1, 4 );
 
 }
 
@@ -55,6 +64,17 @@ function plugin_activate() {
 	if ( version_compare( phpversion(), 5.3, '<' ) ) {
 		die( 'The minimum PHP version required for this plugin is 5.3' );
 	}
+}
+
+function sizes() {
+	return array (
+		//90  => 's',
+		360 => 'm',
+		540 => 'n',
+		720 => 'z',
+		980 => 'c',
+		1280 => 'b',
+	);
 }
 
 
@@ -74,7 +94,7 @@ function delete_from_cache ( $aid = null ) {
 
 		if ( isset( $meta['sizes'] ) && ! empty( $meta['sizes'] ) ) {
 			foreach ( $meta['sizes'] as $size => $data ) {
-				$file = cachedir . DIRECTORY_SEPARATOR . $data['file'];
+				$file = CACHE . DIRECTORY_SEPARATOR . $data['file'];
 				if ( isset( $data['file'] ) && is_file( $file ) ) {
 					debug( " removing {$file}", 5 );
 					unlink ( $file );
@@ -94,74 +114,135 @@ function jpeg_quality () {
 	return $jpeg_quality;
 }
 
+
+/**
+ *
+ */
+function sharpen( $path ) {
+	if ( ! class_exists( '\Imagick' ) )
+		return;
+
+
+	$dimensions = @getimagesize( $path );
+
+	if ( ! isset( $dimensions[2] ) || IMAGETYPE_JPEG != $dimensions[2] )
+		return;
+
+	debug( "sharpening {$path}", 6 );
+	try {
+		$imagick = new \Imagick( $path );
+		$imagick->unsharpMaskImage( 0, 0.5, 1, 0 );
+		$imagick->setImageFormat( "jpg" );
+		$imagick->setImageCompression( \Imagick::COMPRESSION_JPEG );
+		$imagick->setImageCompressionQuality( jpeg_quality() );
+		$imagick->setInterlaceScheme( \Imagick::INTERLACE_PLANE );
+
+		// this is for watermarking
+		$imagick = \apply_filters(
+			"wp_resized2cache_imagick",
+			$imagick,
+			$path
+		);
+
+		$imagick->writeImage( $path );
+		$imagick->destroy();
+	}
+	catch (Exception $e) {
+		debug( 'something went wrong with imagemagick: ',  $e->getMessage(), 4 );
+		return;
+	}
+}
+
+/**
+ *
+ */
+function link_largest_fallback ( $cached ) {
+
+	$r = pathinfo( $cached );
+	// trying to link the largest, resized image to the same name
+	// as the original image is with; this is to make fallbacks easier
+	$guess_original = preg_replace( '/^(.*)-[0-9]{2,4}x[0-9]{2,4}$/',
+		'\\1', $r['filename'] ) . '.' . $r['extension'];
+
+	$upload_dir = \wp_upload_dir();
+	$linked = CACHE . DIRECTORY_SEPARATOR . $guess_original;
+	$original = $upload_dir['basedir'] . DIRECTORY_SEPARATOR . $guess_original;
+
+	// only continue if we could identify the original
+	if ( ! file_exists( $original ) )
+		return;
+
+	// no link yet; create one
+	if ( ! file_exists( $linked ) ) {
+		symlink( $cached, $linked );
+		debug ( "{$linked} linked to {$cached}", 6 );
+		return;
+	}
+
+	// link exists, so compare the linked one's size with the current ones
+	$linked_size = getimagesize( $linked );
+	$cached_size = getimagesize( $cached );
+	$compare = ( $cached_size[0] > $cached_size[1] ) ? 0 : 1;
+	if ( $cached_size[ $compare ] > $linked_size[ $compare ] ) {
+		unlink( $linked );
+		symlink( $cached, $linked );
+		debug ( "{$linked} linked to {$cached}, because it's larger", 6 );
+	}
+
+	return;
+}
+
+/**
+ *
+ */
+function link_simple_name( $cached ) {
+
+	$r = pathinfo( $cached );
+
+		// try to find the relevant size
+	$dimensions = @getimagesize( $cached );
+
+	$match_by = ( $dimensions[0] > $dimensions[1] ) ? 0 : 1;
+
+	$endings = sizes();
+
+	//$endings = array_flip( $endings );
+
+	if ( ! isset( $endings[ $dimensions[ $match_by ] ] ) )
+		return;
+
+	$simple = CACHE .
+		preg_replace( '/^(.*)-[0-9]{2,4}x[0-9]{2,4}$/', '\\1', $r['filename'] )
+		. '_' . $endings[ $dimensions[ $match_by ] ]
+		. '.' . $r['extension'];
+
+	if ( is_file( $simple ) )
+		unlink( $simple );
+
+	symlink( $cached, $simple );
+	debug ( "{$cached} was linked to {$simple}" );
+
+	return;
+}
+
 /**
  * adaptive sharpen images w imagemagick
  */
-function sharpen( $resized ) {
+function fix_location( $resized ) {
+	sharpen( $resized );
 
-	if ( ! class_exists( '\Imagick' ) ) {
-		debug( 'Please install Imagick extension'
-		. 'otherwise this plugin will not work as well as it should.', 4);
-	}
+	$r = pathinfo( $resized );
+	$cached = CACHE . $r['filename'] . '.' . $r['extension'];
 
-	/*
-	 * 0 => original var
-	 * 1 => full original file path without extension
-	 * 2 => resized size w
-	 * 3 => resized size h
-	 * 4 => extension
-	 */
+	// move the file to cache
+	if ( copy( $resized, $cached ) )
+		unlink( $resized );
 
-	$size = @getimagesize($resized);
+	link_largest_fallback( $cached );
+	link_simple_name( $cached );
 
-	if ( !$size ) {
-		debug( "Unable to get size for: {$resized}", 4);
-		return $resized;
-	}
 
-	//$cachedir = WP_CONTENT_DIR . DIRECTORY_SEPARATOR . 'cache';
-
-	$fname = basename( $resized );
-	$cached = cachedir . DIRECTORY_SEPARATOR . $fname;
-
-	if ( $size[2] == IMAGETYPE_JPEG && class_exists('\Imagick')) {
-		debug( "adaptive sharpen {$resized}", 6 );
-		try {
-			$imagick = new \Imagick( $resized );
-			$imagick->unsharpMaskImage( 0, 0.5, 1, 0 );
-			$imagick->setImageFormat( "jpg" );
-			$imagick->setImageCompression( \Imagick::COMPRESSION_JPEG );
-			$imagick->setImageCompressionQuality( jpeg_quality() );
-			$imagick->setInterlaceScheme( \Imagick::INTERLACE_PLANE );
-			$imagick = \apply_filters(
-				"wp_resized2cache_imagick",
-				$imagick,
-				$resized
-			);
-			$imagick->writeImage($cached);
-			$imagick->destroy();
-		}
-		catch (Exception $e) {
-			debug( 'something went wrong with imagemagick: ',  $e->getMessage(), 4 );
-			return $resized;
-		}
-
-		debug( "removing " . $resized, 5 );
-		unlink ($resized);
-
-	}
-	else {
-		debug( "moving {$cached}", 5 );
-		if ( copy( $resized, $cached ) ) {
-			debug( "removing {$resized}", 5 );
-			unlink( $resized );
-		}
-		else {
-			debug( "\tmove failed, passing on this", 4 );
-		}
-	}
-
-	return $resized;
+	return $cached;
 }
 
 /**
@@ -232,4 +313,59 @@ function is_post ( &$post ) {
 		return true;
 
 	return false;
+}
+
+/**
+ *
+ */
+function find_thid ( $resized ) {
+
+	global $wpdb;
+	$dbname = "{$wpdb->prefix}postmeta";
+	$req = false;
+
+	$q = $wpdb->prepare( "SELECT `post_id` FROM `{$dbname}` WHERE "
+		."`meta_value` LIKE '%%%s%%' AND "
+		."`meta_key` = '_wp_attachment_metadata' LIMIT 1",
+	basename( $resized ) );
+
+	try {
+		$req = $wpdb->get_var( $q );
+	}
+	catch (Exception $e) {
+		debug('Something went wrong: ' . $e->getMessage(), 4);
+	}
+
+	return $req;
+}
+
+/**
+ *
+ *  fix the wp content url/dir when trying to get an image src
+ *
+ */
+function wp_get_attachment_image_src ( $image, $thid, $size, $icon ) {
+	debug ( $image );
+	$by = ( $image[1] > $image[2] ) ? $image[1] : $image[2];
+
+	$endings = sizes();
+	if ( isset( $endings[ $by ] ) ) {
+		$simple = pathinfo( $image[0] );
+		$simple = CACHE .
+		preg_replace( '/^(.*)-[0-9]{2,4}x[0-9]{2,4}$/', '\\1', $simple['filename'] )
+			. '_' . $endings[ $s ]
+			. '.' . $simple['extension'];
+
+		$image[0] = $simple;
+	}
+	else {
+		$upload_dir = \wp_upload_dir();
+		$cached = str_replace( trim( $upload_dir['baseurl'], '/' ),
+			CACHENAME, $image[0] );
+
+		if ( is_file( \WP_CONTENT_DIR . $cached ) )
+			$image[0] = $cached;
+	}
+
+	return $image;
 }
